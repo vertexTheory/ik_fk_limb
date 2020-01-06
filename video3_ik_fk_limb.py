@@ -86,6 +86,88 @@ def create_fk_controls(fk_joints, search, replace):
 
     return controls
 
+def create_ik_control(end_joint):
+    '''
+    Creates an IK control in world space based the end joint position
+    Args:
+        end_joint: (string) end joint name
+
+    Returns:
+        (string) ik control name
+
+    '''
+    # generate name based off end joint side
+    ik_control = 'C_ik_ctrl'
+    if 'L_' in end_joint:
+        ik_control = 'L_ik_ctrl'
+    if 'R_' in end_joint:
+        ik_control = 'R_ik_ctrl'
+
+    # create control curve
+    point_one = [0.0, 0.0, 1.0]
+    point_two = [1.0, 0.0, 0.0]
+    point_three = [0.0, 0.0, -1.0]
+    point_four = [-1.0, 0.0, 0.0]
+    point_five = [0.0, 0.0, 1.0]
+
+    cmds.curve(p = [point_one, point_two, point_three, point_four, point_five], n=ik_control, d=1)
+
+    # place control curve
+    cmds.matchTransform(ik_control, end_joint, pos=True, rot=False, scl=False)
+
+    # bake trs to offsetParentMatrix
+    bake_trs_offsetParentMatrix(ik_control)
+
+    return ik_control
+
+def bake_trs_offsetParentMatrix(transform):
+    '''
+    Bakes TRS values into the offsetParentMatrix
+    Args:
+        transform: (string) name of the transform
+
+    Returns:
+
+    '''
+    # duplicate transform to place with offsetParentMatrix
+    temp = cmds.duplicate(transform, po=True)[0]
+
+    # check for parent
+    parent = None
+    try:
+        parent = cmds.listRelatives(transform, p=True)[0]
+    except:
+        pass
+
+    # zero out trs values on the transform
+    for attr in ['translate', 'rotate', 'scale']:
+        for axis in 'XYZ':
+            if attr == 'scale':
+                cmds.setAttr('{}.{}{}'.format(transform, attr, axis), 1.0)
+            else:
+                cmds.setAttr('{}.{}{}'.format(transform, attr, axis), 0.0)
+
+    # place with offsetParentMatrix
+    if parent:
+        mult = cmds.createNode('multMatrix')
+        cmds.connectAttr('{}.worldMatrix[0]'.format(temp), '{}.matrixIn[0]'.format(mult))
+        cmds.connectAttr('{}.worldInverseMatrix[0]'.format(parent), '{}.matrixIn[1]'.format(mult))
+        cmds.connectAttr('{}.matrixSum'.format(mult), '{}.offsetParentMatrix'.format(transform))
+
+        cmds.disconnectAttr('{}.matrixSum'.format(mult), '{}.offsetParentMatrix'.format(transform))
+        cmds.delete(mult)
+    # if there is not a parent
+    else:
+        cmds.connectAttr('{}.worldMatrix[0]'.format(temp), '{}.offsetParentMatrix'.format(transform))
+        cmds.disconnectAttr('{}.worldMatrix[0]'.format(temp), '{}.offsetParentMatrix'.format(transform))
+
+    # delete temp transform
+    cmds.delete(temp)
+
+
+
+
+
 def connect_trs(source, destination):
     '''
     Connects TRS from source to destination
